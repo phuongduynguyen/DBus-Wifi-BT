@@ -10,6 +10,10 @@ pkg_check_modules(DBUS REQUIRED dbus-1)
 pkg_check_modules(DBUS_GLIB REQUIRED dbus-glib-1)
 pkg_check_modules(GLIB REQUIRED glib-2.0)
 
+include_directories(${DBUS_INCLUDE_DIRS})
+
+message(STATUS "Source DBus files: ${DBUS_INCLUDE_DIRS}")
+
 # Specify header and source files
 file(GLOB LIB_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h")
 file(GLOB SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")

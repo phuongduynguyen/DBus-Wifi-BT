@@ -9,11 +9,10 @@ const char* METHOD_GET = "Get";
 const char* METHOD_SET = "Set";
 const char* METHOD_SET_PROP = "SetProperty";
 const char* METHOD_POWERED_PROP = "Powered";
-
+const char* METHOD_WIRELESS_ENABLED = "WirelessEnabled";
 const char* BT_SERVICE_NAME = "org.bluez";
 const char* BT_OBJECT_PATH = "/org/bluez/hci0";
 const char* BT_ADAPTER_INTERFACE = "org.bluez.Adapter1";
-
 
 
 static NetworkProvider* gInstance = nullptr;
@@ -115,16 +114,12 @@ DBusMessage* NetworkProvider::invokeMethod(DBusMessage* messageSend, const char*
         }
         
         if (dbus_message_is_method_call(messageSend,INTERFACE_DBUS_PROP,METHOD_SET)) {  
-            std::cout << "[dbus_message_is_method_call true\n";
             dbus_message_iter_open_container(&iter, DBUS_TYPE_VARIANT, "b", &variant);
             if (!dbus_message_iter_append_basic(&variant, DBUS_TYPE_BOOLEAN, &valueSend)) {
                 std::cerr << "Out of memory!" << std::endl;
                 break;
             }
             dbus_message_iter_close_container(&iter, &variant);
-        }
-        else {
-            std::cout << "[dbus_message_is_method_call false\n";
         }
 
         message = dbus_connection_send_with_reply_and_block(mConnection, messageSend, -1, &error);
@@ -139,7 +134,6 @@ DBusMessage* NetworkProvider::invokeMethod(DBusMessage* messageSend, const char*
 
 void NetworkProvider::toggleNetWork(const NetworkType& type)
 {
-    std::cout << "[" << __PRETTY_FUNCTION__ << "] - " << " line: " << __LINE__ << "\n";
     bool networkStatus = false;
     DBusMessage* messageSend = nullptr;
     DBusMessage* messageReply = nullptr;
@@ -147,17 +141,16 @@ void NetworkProvider::toggleNetWork(const NetworkType& type)
     switch (type)
     {
         case NetworkType::Wifi: {
-
+            networkStatus = getWiFiStatus();
+            messageSend = createMethod(NM_DBUS_SERVICE, NM_DBUS_PATH, METHOD_SET);
+            messageReply = invokeMethod(messageSend,NM_DBUS_INTERFACE, METHOD_WIRELESS_ENABLED, !networkStatus);
             break;
         }
 
         case NetworkType::Bluetooth: {
             networkStatus = getBTStatus();
-            std::cout << "[" << __PRETTY_FUNCTION__ << "] - " << " line: " << __LINE__ << "\n";
             messageSend = createMethod(BT_SERVICE_NAME, BT_OBJECT_PATH, METHOD_SET);
-            std::cout << "[" << __PRETTY_FUNCTION__ << "] - " << " line: " << __LINE__ << "\n";
             messageReply = invokeMethod(messageSend,BT_ADAPTER_INTERFACE, METHOD_POWERED_PROP, !networkStatus);
-            std::cout << "[" << __PRETTY_FUNCTION__ << "] - " << " line: " << __LINE__ << "\n";
             break;
         }
 
@@ -175,21 +168,62 @@ void NetworkProvider::toggleNetWork(const NetworkType& type)
 
 bool NetworkProvider::getWiFiStatus()
 {
-    return false;
+    DBusMessageIter iter;
+    DBusMessageIter variant;
+    DBusMessage* messageSend = nullptr;
+    DBusMessage* messageReply = nullptr;
+
+    /**
+     * Note: Do not use bool type, DBus writes 4 bytes to a bool, 
+     *       which only expects 1 byte. This can overwrite adjacent memory, 
+     *       leading to corruption and eventually a crash.
+     */
+    dbus_bool_t ret = FALSE;
+    do
+    {
+        if (nullptr == mConnection) {
+            std::cout << "getWiFiStatus but empty connection\n";
+            break;
+        }
+        messageSend = createMethod(NM_DBUS_SERVICE, NM_DBUS_PATH, METHOD_GET);
+        if (nullptr == messageSend) {
+            std::cerr << "getWiFiStatus but messageSend creation failed\n" ;
+            break;
+        }
+        messageReply = invokeMethod(messageSend,NM_DBUS_INTERFACE,METHOD_WIRELESS_ENABLED);
+        if (!dbus_message_iter_init(messageReply, &iter)) {
+            std::cerr << "getWiFiStatus but init message reply failed\n" ;
+            break;
+        }
+        if (dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_VARIANT) {
+            dbus_message_iter_recurse(&iter, &variant);
+            if (dbus_message_iter_get_arg_type(&variant) == DBUS_TYPE_BOOLEAN) {
+                dbus_message_iter_get_basic(&variant, &ret);
+            }
+        }
+
+    } while (0);
+
+    if (nullptr != messageSend) {
+        dbus_message_unref(messageSend);
+    }
+
+    if (nullptr != messageReply) {
+        dbus_message_unref(messageReply);
+    }
+    return static_cast<bool>(ret);
 }
 
 bool NetworkProvider::getBTStatus()
 {
-    std::cout << "[" << __PRETTY_FUNCTION__ << "] - " << " line: " << __LINE__ << "\n";
     DBusMessageIter iter;
     DBusMessageIter variant;
     DBusMessage* messageSend = nullptr;
     DBusMessage* messageReply = nullptr;   
-    bool ret = false;
-    
+    dbus_bool_t ret = FALSE;
+
     do
     {
-        std::cout << "[" << __PRETTY_FUNCTION__ << "] - " << " line: " << __LINE__ << "\n";
         if (nullptr == mConnection) {
             std::cout << "getBTStatus but empty connection\n";
             break;
@@ -199,14 +233,11 @@ bool NetworkProvider::getBTStatus()
             std::cerr << "getBTStatus but messageSend creation failed\n" ;
             break;
         }
-        std::cout << "[" << __PRETTY_FUNCTION__ << "] - " << " line: " << __LINE__ << "\n";
         messageReply = invokeMethod(messageSend,BT_ADAPTER_INTERFACE,METHOD_POWERED_PROP);
-        std::cout << "[" << __PRETTY_FUNCTION__ << "] - " << " line: " << __LINE__ << "\n";
         if (!dbus_message_iter_init(messageReply, &iter)) {
             std::cerr << "getBTStatus but init message reply failed\n" ;
             break;
         }
-        std::cout << "[" << __PRETTY_FUNCTION__ << "] - " << " line: " << __LINE__ << "\n";
         if (dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_VARIANT) {
             dbus_message_iter_recurse(&iter, &variant);
             if (dbus_message_iter_get_arg_type(&variant) == DBUS_TYPE_BOOLEAN) {
@@ -215,16 +246,15 @@ bool NetworkProvider::getBTStatus()
         }
 
     } while (0);
-    std::cout << "[" << __PRETTY_FUNCTION__ << "] - " << " line: " << __LINE__ << "\n";
-    // if (nullptr != messageSend) {
-    //     dbus_message_unref(messageSend);
-    // }
-    std::cout << "[" << __PRETTY_FUNCTION__ << "] - " << " line: " << __LINE__ << "\n";
-    // if (nullptr != messageReply) {
-    //     dbus_message_unref(messageReply);
-    // }
-    std::cout << "[" << __PRETTY_FUNCTION__ << "] - " << " line: " << __LINE__ << "\n";
-    return ret;
+
+    if (nullptr != messageSend) {
+        dbus_message_unref(messageSend);
+    }
+
+    if (nullptr != messageReply) {
+        dbus_message_unref(messageReply);
+    }
+    return static_cast<bool>(ret);
 }
 
 
