@@ -124,7 +124,7 @@ static void dumpDbusMessage(DBusMessage* msg) {
             }
             else if (argType == DBUS_TYPE_ARRAY) {
                 DBusMessageIter sub_iter;
-                dbus_message_iter_recurse(&args, &sub_iter);  // Duyệt vào mảng
+                dbus_message_iter_recurse(&args, &sub_iter);
                 std::cout << "[ ";
                 while (dbus_message_iter_get_arg_type(&sub_iter) != DBUS_TYPE_INVALID) {
                     int arrayElemType = dbus_message_iter_get_arg_type(&sub_iter);
@@ -146,9 +146,9 @@ static void dumpDbusMessage(DBusMessage* msg) {
                     else {
                         std::cout << "Unsupported element type in array: " << arrayElemType << " ";
                     }
-                    dbus_message_iter_next(&sub_iter);  // Chuyển sang phần tử tiếp theo trong mảng
+                    dbus_message_iter_next(&sub_iter);
                 }
-                std::cout << "] ";  // Kết thúc mảng
+                std::cout << "] ";
             }
             else {
                 std::cout << "Unsupported argument type: " << argType << " ";
@@ -305,7 +305,7 @@ bool NetworkProvider::doInit()
         mWorkerThread = new std::thread(std::bind(&NetworkProvider::signalHandler, this));
 
     } while (0);
-    
+
     return ret;
 }
 
