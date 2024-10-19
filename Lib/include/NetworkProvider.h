@@ -4,7 +4,8 @@
 #include <dbus/dbus.h>
 #include <iostream>
 #include <string>
-
+#include <thread>
+#include <functional>
 class NetworkProvider
 {
     public:
@@ -20,7 +21,9 @@ class NetworkProvider
 
     private:
         NetworkProvider();
+        ~NetworkProvider();
         bool doInit();
+        void signalHandler();
 
         DBusMessage* createMethod(const char* serviceName, const char* objectPath, const char* method);
         DBusMessage* invokeMethod(DBusMessage* messageSend, const char* interface, const char* property, bool value = false);
@@ -29,6 +32,7 @@ class NetworkProvider
         bool getBTStatus();
 
         DBusConnection* mConnection = nullptr;
+        std::thread* mWorkerThread = nullptr;
     };
 
 #endif // NETWORK_PROVIDER
