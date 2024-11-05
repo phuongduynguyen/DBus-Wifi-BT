@@ -6,8 +6,10 @@
 #include <string>
 #include <thread>
 #include <functional>
+#include "BluetoothManager.h"
 class NetworkProvider
 {
+    friend class BluetoothAdapter;
     public:
         enum class NetworkType
         {
@@ -18,14 +20,16 @@ class NetworkProvider
         static NetworkProvider& initialize();
         static NetworkProvider& getInstance();
         void toggleNetWork(const NetworkType& type);
-
+        void setScanMode(bool isScan);
+        std::string getBluetoothName() const;
+        
     private:
         NetworkProvider();
         ~NetworkProvider();
         bool doInit();
         void signalHandler();
 
-        DBusMessage* createMethod(const char* serviceName, const char* objectPath, const char* method);
+        DBusMessage* createMethod(const char* serviceName, const char* objectPath, const char* interface, const char* method);
         DBusMessage* invokeMethod(DBusMessage* messageSend, const char* interface, const char* property, bool value = false);
 
         bool getWiFiStatus();

@@ -1,20 +1,5 @@
 #include "NetworkProvider.h"
 
-
-const char* NM_DBUS_SERVICE = "org.freedesktop.NetworkManager";
-const char* NM_DBUS_PATH = "/org/freedesktop/NetworkManager";
-const char* NM_DBUS_INTERFACE = "org.freedesktop.NetworkManager";
-const char* INTERFACE_DBUS_PROP = "org.freedesktop.DBus.Properties";
-const char* SIGNAL_PROPERTIES_CHANGED = "PropertiesChanged";
-const char* METHOD_GET = "Get";
-const char* METHOD_SET = "Set";
-const char* METHOD_SET_PROP = "SetProperty";
-const char* METHOD_POWERED_PROP = "Powered";
-const char* METHOD_WIRELESS_ENABLED = "WirelessEnabled";
-const char* BT_SERVICE_NAME = "org.bluez";
-const char* BT_OBJECT_PATH = "/org/bluez/hci0";
-const char* BT_ADAPTER_INTERFACE = "org.bluez.Adapter1";
-
 static void dumpDbusMessage(DBusMessage* msg) {
     if (!msg) {
         std::cerr << "Message is null." << std::endl;
@@ -262,7 +247,7 @@ NetworkProvider& NetworkProvider::initialize() {
 
 NetworkProvider& NetworkProvider::getInstance() {
     if (nullptr == gInstance) {
-        throw std::runtime_error("Must initialize first");
+        throw std::runtime_error("NetworkProvider must initialize first");
     }
     return *gInstance;    
 }
@@ -302,7 +287,8 @@ bool NetworkProvider::doInit()
             break;        
         }
 
-        mWorkerThread = new std::thread(std::bind(&NetworkProvider::signalHandler, this));
+        // mWorkerThread = new std::thread(std::bind(&NetworkProvider::signalHandler, this));
+        BluetoothAdapter::initialize(*this);
 
     } while (0);
 
@@ -336,7 +322,7 @@ void NetworkProvider::signalHandler()
 
         dumpDbusMessage(message);
 
-        if (!dbus_message_is_signal(message, INTERFACE_DBUS_PROP, SIGNAL_PROPERTIES_CHANGED)) {
+        if (!dbus_message_is_signal(message, G_INTERFACE_DBUS_PROP, G_SIGNAL_PROPERTIES_CHANGED)) {
             continue;
         }
         
@@ -350,7 +336,7 @@ void NetworkProvider::signalHandler()
                 
         dbus_message_iter_get_basic(&args, &interface);
 
-        if (std::string(interface) != std::string(BT_ADAPTER_INTERFACE)) {
+        if (std::string(interface) != std::string(G_BT_ADAPTER_INTERFACE)) {
             continue;
         }
 
@@ -379,7 +365,7 @@ void NetworkProvider::signalHandler()
                 goto NextIter;
             }
 
-            if (std::string(propertyName) != std::string(METHOD_POWERED_PROP)) {
+            if (std::string(propertyName) != std::string(G_METHOD_POWERED_PROP)) {
                 goto NextIter;
             }
                     
@@ -412,7 +398,7 @@ NextIter:
     }
 }
 
-DBusMessage* NetworkProvider::createMethod(const char* serviceName, const char* objectPath, const char* method)
+DBusMessage* NetworkProvider::createMethod(const char* serviceName, const char* objectPath, const char* interface, const char* method)
 {
     DBusMessage* message = nullptr;
     do
@@ -424,7 +410,7 @@ DBusMessage* NetworkProvider::createMethod(const char* serviceName, const char* 
         message = dbus_message_new_method_call(
             serviceName,                        // Service name
             objectPath,                         // object path 
-            INTERFACE_DBUS_PROP,                // Interface Dbus property
+            interface,                          // Interface Dbus
             method                              // Method name
         );
 
@@ -453,6 +439,10 @@ DBusMessage* NetworkProvider::invokeMethod(DBusMessage* messageSend, const char*
 
         dbus_error_init(&error);
 
+        if (std::string(dbus_message_get_interface(messageSend)) == G_BT_ADAPTER_INTERFACE) {
+            goto Sending;
+        }
+        
         dbus_message_iter_init_append(messageSend, &iter);
         if (!dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &interface)) {
             std::cerr << "createMethod but out of memory for interface!\n";
@@ -464,7 +454,7 @@ DBusMessage* NetworkProvider::invokeMethod(DBusMessage* messageSend, const char*
             break;
         }
         
-        if (dbus_message_is_method_call(messageSend,INTERFACE_DBUS_PROP,METHOD_SET)) {  
+        if (dbus_message_is_method_call(messageSend,G_INTERFACE_DBUS_PROP,G_METHOD_SET)) {  
             dbus_message_iter_open_container(&iter, DBUS_TYPE_VARIANT, "b", &variant);
             if (!dbus_message_iter_append_basic(&variant, DBUS_TYPE_BOOLEAN, &valueSend)) {
                 std::cerr << "Out of memory!" << std::endl;
@@ -473,6 +463,7 @@ DBusMessage* NetworkProvider::invokeMethod(DBusMessage* messageSend, const char*
             dbus_message_iter_close_container(&iter, &variant);
         }
 
+Sending:
         message = dbus_connection_send_with_reply_and_block(mConnection, messageSend, -1, &error);
         if (dbus_error_is_set(&error)) {
             std::cerr << "Error in reply: " << error.message << std::endl;
@@ -493,15 +484,13 @@ void NetworkProvider::toggleNetWork(const NetworkType& type)
     {
         case NetworkType::Wifi: {
             networkStatus = getWiFiStatus();
-            messageSend = createMethod(NM_DBUS_SERVICE, NM_DBUS_PATH, METHOD_SET);
-            messageReply = invokeMethod(messageSend,NM_DBUS_INTERFACE, METHOD_WIRELESS_ENABLED, !networkStatus);
+            messageSend = createMethod(G_NM_DBUS_SERVICE, G_NM_DBUS_PATH, G_INTERFACE_DBUS_PROP, G_METHOD_SET);
+            messageReply = invokeMethod(messageSend, G_NM_DBUS_INTERFACE, G_METHOD_WIRELESS_ENABLED, !networkStatus);
             break;
         }
 
         case NetworkType::Bluetooth: {
-            networkStatus = getBTStatus();
-            messageSend = createMethod(BT_SERVICE_NAME, BT_OBJECT_PATH, METHOD_SET);
-            messageReply = invokeMethod(messageSend,BT_ADAPTER_INTERFACE, METHOD_POWERED_PROP, !networkStatus);
+            BluetoothAdapter::getInstance().toggleBluetoothPower();
             break;
         }
 
@@ -515,6 +504,16 @@ void NetworkProvider::toggleNetWork(const NetworkType& type)
     if (nullptr != messageSend) {
         dbus_message_unref(messageSend);
     }   
+}
+
+void NetworkProvider::setScanMode(bool isScan)
+{
+    if (isScan) {
+        BluetoothAdapter::getInstance().startDiscovery();
+    }
+    else {
+        BluetoothAdapter::getInstance().stopDiscovery();
+    } 
 }
 
 bool NetworkProvider::getWiFiStatus()
@@ -536,12 +535,12 @@ bool NetworkProvider::getWiFiStatus()
             std::cout << "getWiFiStatus but empty connection\n";
             break;
         }
-        messageSend = createMethod(NM_DBUS_SERVICE, NM_DBUS_PATH, METHOD_GET);
+        messageSend = createMethod(G_NM_DBUS_SERVICE, G_NM_DBUS_PATH, G_INTERFACE_DBUS_PROP, G_METHOD_GET);
         if (nullptr == messageSend) {
             std::cerr << "getWiFiStatus but messageSend creation failed\n" ;
             break;
         }
-        messageReply = invokeMethod(messageSend,NM_DBUS_INTERFACE,METHOD_WIRELESS_ENABLED);
+        messageReply = invokeMethod(messageSend,G_NM_DBUS_INTERFACE,G_METHOD_WIRELESS_ENABLED);
         if (!dbus_message_iter_init(messageReply, &iter)) {
             std::cerr << "getWiFiStatus but init message reply failed\n" ;
             break;
@@ -567,45 +566,12 @@ bool NetworkProvider::getWiFiStatus()
 
 bool NetworkProvider::getBTStatus()
 {
-    DBusMessageIter iter;
-    DBusMessageIter variant;
-    DBusMessage* messageSend = nullptr;
-    DBusMessage* messageReply = nullptr;   
-    dbus_bool_t ret = FALSE;
+    return BluetoothAdapter::getInstance().getBluetoothPower();
+}
 
-    do
-    {
-        if (nullptr == mConnection) {
-            std::cout << "getBTStatus but empty connection\n";
-            break;
-        }
-        messageSend = createMethod(BT_SERVICE_NAME, BT_OBJECT_PATH, METHOD_GET);
-        if (nullptr == messageSend) {
-            std::cerr << "getBTStatus but messageSend creation failed\n" ;
-            break;
-        }
-        messageReply = invokeMethod(messageSend,BT_ADAPTER_INTERFACE,METHOD_POWERED_PROP);
-        if (!dbus_message_iter_init(messageReply, &iter)) {
-            std::cerr << "getBTStatus but init message reply failed\n" ;
-            break;
-        }
-        if (dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_VARIANT) {
-            dbus_message_iter_recurse(&iter, &variant);
-            if (dbus_message_iter_get_arg_type(&variant) == DBUS_TYPE_BOOLEAN) {
-                dbus_message_iter_get_basic(&variant, &ret);
-            }
-        }
-
-    } while (0);
-
-    if (nullptr != messageSend) {
-        dbus_message_unref(messageSend);
-    }
-
-    if (nullptr != messageReply) {
-        dbus_message_unref(messageReply);
-    }
-    return static_cast<bool>(ret);
+std::string NetworkProvider::getBluetoothName() const
+{
+    return BluetoothAdapter::getInstance().getBluetoothName();
 }
 
 

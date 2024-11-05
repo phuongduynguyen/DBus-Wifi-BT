@@ -15,6 +15,15 @@ int main(void)
         else if(input == "wf") {
             NetworkProvider::getInstance().toggleNetWork(NetworkProvider::NetworkType::Wifi);
         }
+        else if(input == "startscan") {
+            NetworkProvider::getInstance().setScanMode(true);
+        }
+        else if(input == "stopscan") {
+            NetworkProvider::getInstance().setScanMode(false);
+        }
+        else if(input == "name") {
+            std::cout << "Central name: " << NetworkProvider::getInstance().getBluetoothName() << "\n";
+        }
         else {
 
         }
