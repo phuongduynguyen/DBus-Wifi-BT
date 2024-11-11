@@ -12,6 +12,7 @@
     static constexpr const char* G_BT_INTERFACE_DEVICE1 = "org.bluez.Device1";
     static constexpr const char* G_METHOD_POWERED_PROP = "Powered";
     static constexpr const char* G_METHOD_START_DISCOVERY = "StartDiscovery";
+    static constexpr const char* G_METHOD_GET_ADDRESS = "Address";
     static constexpr const char* G_METHOD_STOP_DISCOVERY = "StopDiscovery";
     static constexpr const char* G_ALIAS = "Alias";
 

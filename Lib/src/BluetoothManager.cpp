@@ -120,7 +120,7 @@ void BluetoothAdapter::stopDiscovery()
     DBusError err;
 
     if (nullptr == mNetwork.mConnection) {
-        std::cout << "startDiscovery but not establish connection\n";
+        std::cout << "stopDiscovery but not establish connection\n";
         return;
     }
 
@@ -223,6 +223,11 @@ std::string BluetoothAdapter::getBluetoothName() const
 
     DBusMessage* message = mNetwork.createMethod(G_BT_SERVICE_NAME, G_BT_OBJECT_PATH, G_INTERFACE_DBUS_PROP, G_METHOD_GET);
     
+    if (nullptr == message) {
+        std::cerr << "Message is NULL\n";
+        return "";
+    }
+
     dbus_message_append_args(message,
                              DBUS_TYPE_STRING, &G_BT_ADAPTER_INTERFACE,
                              DBUS_TYPE_STRING, &G_ALIAS,
@@ -251,6 +256,62 @@ std::string BluetoothAdapter::getBluetoothName() const
     return "";
 
 }
+
+std::string BluetoothAdapter::getBluetoothAddress() const
+{
+    DBusMessage *message = nullptr;
+    DBusMessage *reply = nullptr;
+    DBusError error;
+    if (nullptr == mNetwork.mConnection) {
+        std::cout << "getBluetoothAddress but not establish connection\n";
+        return "";
+    }
+
+    {
+        std::unique_lock<std::shared_mutex> lock(mMutex);
+        dbus_error_init(&error);
+        DBusMessage* message = mNetwork.createMethod(G_BT_SERVICE_NAME, G_BT_OBJECT_PATH, G_INTERFACE_DBUS_PROP, G_METHOD_GET);
+        
+        if (nullptr == message) {
+            std::cerr << "Message is NULL\n";
+            return "";
+        }
+        
+        dbus_message_append_args(message,
+                                DBUS_TYPE_STRING, &G_BT_ADAPTER_INTERFACE,
+                                DBUS_TYPE_STRING, &G_METHOD_GET_ADDRESS,
+                                DBUS_TYPE_INVALID);
+
+        DBusMessage* reply = dbus_connection_send_with_reply_and_block(mNetwork.mConnection, message, -1, &error);
+        dbus_message_unref(message);
+
+        if (dbus_error_is_set(&error)) {
+            std::cerr << "Error getBluetoothAddress: " << error.message << std::endl;
+            dbus_error_free(&error);
+            return "";
+        }
+        
+        DBusMessageIter args;
+        if (!dbus_message_iter_init(reply, &args)) {
+            std::cerr << "Reply has no arguments." << std::endl;
+        } else if (dbus_message_iter_get_arg_type(&args) == DBUS_TYPE_VARIANT) {
+            DBusMessageIter variant;
+            dbus_message_iter_recurse(&args, &variant);
+
+            const char* bluetoothAddress = nullptr;
+            if (dbus_message_iter_get_arg_type(&variant) == DBUS_TYPE_STRING) {
+                dbus_message_iter_get_basic(&variant, &bluetoothAddress);
+            }
+
+            dbus_message_unref(reply);
+            return bluetoothAddress ? std::string(bluetoothAddress) : "";
+        }
+
+        dbus_message_unref(reply);
+        return "";
+    }
+}
+
 
 std::vector<std::shared_ptr<BluetoothDevice>> BluetoothAdapter::getBondedDevices() const
 {

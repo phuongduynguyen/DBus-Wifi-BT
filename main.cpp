@@ -24,6 +24,9 @@ int main(void)
         else if(input == "name") {
             std::cout << "Central name: " << NetworkProvider::getInstance().getBluetoothName() << "\n";
         }
+        else if(input == "address") {
+            std::cout << "Central address: " << NetworkProvider::getInstance().getBluetoothAddress() << "\n";
+        }
         else {
 
         }

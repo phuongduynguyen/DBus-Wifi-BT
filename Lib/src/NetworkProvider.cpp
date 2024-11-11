@@ -574,6 +574,12 @@ std::string NetworkProvider::getBluetoothName() const
     return BluetoothAdapter::getInstance().getBluetoothName();
 }
 
+std::string NetworkProvider::getBluetoothAddress() const
+{
+    return BluetoothAdapter::getInstance().getBluetoothAddress();
+}
+
+
 
 
 

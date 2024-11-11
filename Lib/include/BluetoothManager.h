@@ -80,7 +80,7 @@ class BluetoothAdapter
         NetworkProvider& mNetwork;
         std::string mBluetoothName;
         std::string mBluetoothAddress;
-        std::shared_mutex mMutex;
+        mutable std::shared_mutex mMutex;
         std::mutex mDiscoveringMutex;
         std::condition_variable mDiscoveringCV;
         bool mDiscovering;
