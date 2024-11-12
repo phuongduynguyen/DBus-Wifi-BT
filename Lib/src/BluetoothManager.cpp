@@ -3,30 +3,35 @@
 #include <locale>
 #include <regex>
 #include <unistd.h>
+#include <variant> 
 
 static BluetoothAdapter* gInstance = nullptr;
 
 std::unordered_map<std::string, std::string> BluetoothAdapter::gProfileMap = {
-                                                                                {"00001200-0000-1000-8000-00805f9b34fb", "PnP"},
-                                                                                {"0000111f-0000-1000-8000-00805f9b34fb", "HFP" },
-                                                                                {"0000112f-0000-1000-8000-00805f9b34fb", "PBAP"},
+                                                                                {"00001200-0000-1000-8000-00805f9b34fb", "PnP"}, // Plug and Play
+                                                                                {"0000111f-0000-1000-8000-00805f9b34fb", "HFP" }, // Handfree profile
+                                                                                {"0000112f-0000-1000-8000-00805f9b34fb", "PBAP"}, // Phone Book Access Profile
                                                                                 {"0000110a-0000-1000-8000-00805f9b34fb", "Audio-Source"},
                                                                                 {"0000110b-0000-1000-8000-00805f9b34fb", "Audio-Sink"},
                                                                                 {"0000110e-0000-1000-8000-00805f9b34fb", "A2DP-Source"},
                                                                                 {"0000110c-0000-1000-8000-00805f9b34fb", "A2DP-Sink"},
-                                                                                {"0000110d-0000-1000-8000-00805f9b34fb", "A2DP"},
-                                                                                {"00001116-0000-1000-8000-00805f9b34fb", "HSP"},
-                                                                                {"00001132-0000-1000-8000-00805f9b34fb", "MAP"},
-                                                                                {"00001801-0000-1000-8000-00805f9b34fb", "GATT"},
+                                                                                {"0000110d-0000-1000-8000-00805f9b34fb", "A2DP"}, // Advanced Audio Distribution Profile
+                                                                                {"00001116-0000-1000-8000-00805f9b34fb", "HSP"}, // Headset Profile
+                                                                                {"00001132-0000-1000-8000-00805f9b34fb", "MAP"}, // Message Access Profile
+                                                                                {"00001801-0000-1000-8000-00805f9b34fb", "GATT"}, // Generic Attribute Profile
                                                                                 {"00000000-deca-fade-deca-deafdecacafe", "Custom-Profile"},
                                                                                 {"02030302-1d19-415f-86f2-22a2106a0a77", "Custom-UUID-1"},
                                                                                 {"2d8d2466-e14d-451c-88bc-7301abea291a", "Custom-UUID-2"},
-                                                                                {"00000000-deca-fade-deca-deafdecacafe", "iAP"},
+                                                                                {"00000000-deca-fade-deca-deafdecacafe", "iAP"}, // Apple's Internet Accessory Protocol
                                                                                 {"2d8d2466-e14d-451c-88bc-7301abea291a", "Carplay"},
                                                                                 {"02030302-1d19-415f-86f2-22a2106a0a77", "iAP-v2"},
                                                                                 {"02030302-1d19-415f-86f2-22a2106a0a77", "iAP-v2"},
                                                                                 {"1ff31936-572e-4b36-a2bf-b2409b1aa6f4", "MAP-Apple"},
                                                                                 {"00001000-0000-1000-8000-00805f9b34fb", "Discovery-Server-Service-Class-ID"},
+                                                                                {"00001800-0000-1000-8000-00805f9b34fb", "GAP"}, // Generic Access Profile
+                                                                                {"0000180a-0000-1000-8000-00805f9b34fb", "DIS"}, // Device Information Service
+                                                                                {"9fa480e0-4967-4542-9390-d343dc5d04ae", "TDS"}, // Transport Discovery Service
+                                                                                {"d0611e78-bbb4-4591-a5f8-487910ae4366", "AMS"}, // Apple Media Service 
                                                                             };
 
 
@@ -60,7 +65,6 @@ std::string BluetoothAdapter::getProfile(const char* uuid)
     }
     return ret;
 }
-
 
 BluetoothAdapter::BluetoothAdapter(NetworkProvider& network) : mNetwork(network), mDiscovering(false), mDiscoveringThread(nullptr)
 {
@@ -321,65 +325,12 @@ std::vector<std::shared_ptr<BluetoothDevice>> BluetoothAdapter::getBondedDevices
 
 void BluetoothAdapter::discoveringHandler()
 {
-    static std::function<void(DBusConnection*, const char*, const char*, const char*)>  getDeviceProperty = [this](DBusConnection *conn, const char *device_path, const char *property, const char *interface){
-        DBusMessage *message;
-        DBusMessage *reply;
-        DBusError err;
-        dbus_error_init(&err);
 
-        message = mNetwork.createMethod(G_BT_SERVICE_NAME, device_path, G_INTERFACE_DBUS_PROP, G_METHOD_GET);
-
-        DBusMessageIter args;
-        dbus_message_iter_init_append(message, &args);
-        const char *interface_name = interface;
-        const char *property_name = property;
-        dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &interface_name);
-        dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &property_name);
-
-        reply = dbus_connection_send_with_reply_and_block(mNetwork.mConnection, message, -1, &err);
-        dbus_message_unref(message);
-
-        if (dbus_error_is_set(&err)) {
-            std::cerr << "Error getting property: " << err.message << std::endl;
-            dbus_error_free(&err);
-            return;
-        }
-
-        if (nullptr != reply) {
-            DBusMessageIter reply_iter;
-            dbus_message_iter_init(reply, &reply_iter);
-
-            if (dbus_message_iter_get_arg_type(&reply_iter) == DBUS_TYPE_VARIANT) {
-                DBusMessageIter variant_iter;
-                dbus_message_iter_recurse(&reply_iter, &variant_iter);
-
-                if (0 == strcmp(property, "Address")| 0 == strcmp(property, "Name")) {
-                    const char *value;
-                    dbus_message_iter_get_basic(&variant_iter, &value);
-                    std::cout << property << ": " << value << std::endl;
-                } else if (0 == strcmp(property, "UUIDs")) {
-                    std::cout << "Supported Profiles: ";
-                    if (dbus_message_iter_get_arg_type(&variant_iter) == DBUS_TYPE_ARRAY) {
-                        DBusMessageIter array_iter;
-                        dbus_message_iter_recurse(&variant_iter, &array_iter);
-                        while (dbus_message_iter_get_arg_type(&array_iter) == DBUS_TYPE_STRING) {
-                            const char *uuid;
-                            dbus_message_iter_get_basic(&array_iter, &uuid);
-                            std::cout << BluetoothAdapter::getProfile(uuid) << " ";
-                            dbus_message_iter_next(&array_iter);
-                        }
-                    }
-                    std::cout << std::endl;
-                }
-            }
-            dbus_message_unref(reply);
-        }
-    };
-
-    static std::function<void(DBusConnection*, const char*)> getDeviceName = [this](DBusConnection *conn, const char* device_path) {
+    static std::function<void(DBusConnection*, const char*)> getDeviceInfo = [this](DBusConnection *conn, const char* device_path) {
         DBusMessage* message;
         DBusMessage* reply;
         DBusError err;
+        std::string ret = "";
         DBusMessageIter iter, dict_entry_iter, dict_value_iter;
         
         dbus_error_init(&err);
@@ -398,15 +349,14 @@ void BluetoothAdapter::discoveringHandler()
         }
 
         if (nullptr != reply) {
-            if (dbus_message_iter_init(reply, &iter) &&
-                dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_ARRAY) {
+            if (dbus_message_iter_init(reply, &iter) && dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_ARRAY) {
                 dbus_message_iter_recurse(&iter, &dict_entry_iter);
                 while (dbus_message_iter_get_arg_type(&dict_entry_iter) == DBUS_TYPE_DICT_ENTRY) {
                     DBusMessageIter dict_entry_key_iter, dict_entry_value_iter;
                     dbus_message_iter_recurse(&dict_entry_iter, &dict_entry_key_iter);
                     const char* property_name;
                     dbus_message_iter_get_basic(&dict_entry_key_iter, &property_name);
-
+                    // std::cout << "- Property : " << std::string(property_name) << "\n";
                     if (std::string(property_name) == "Name") {
                         dbus_message_iter_next(&dict_entry_key_iter);
                         dbus_message_iter_recurse(&dict_entry_key_iter, &dict_entry_value_iter);
@@ -414,9 +364,71 @@ void BluetoothAdapter::discoveringHandler()
                         const char* device_name;
                         dbus_message_iter_get_basic(&dict_entry_value_iter, &device_name);
                         std::cout << "Device Name: " << device_name << std::endl;
-                        break;
+                        // break;
                     }
-                    
+                    else if (std::string(property_name) == "Address") {
+                        dbus_message_iter_next(&dict_entry_key_iter);
+                        dbus_message_iter_recurse(&dict_entry_key_iter, &dict_entry_value_iter);
+
+                        const char* device_name;
+                        dbus_message_iter_get_basic(&dict_entry_value_iter, &device_name);
+                        std::cout << "Device address: " << device_name << std::endl;
+                    }
+                    else if (std::string(property_name) == "Paired")
+                    {
+                        dbus_bool_t ret = FALSE;
+                        dbus_message_iter_next(&dict_entry_key_iter);
+                        dbus_message_iter_recurse(&dict_entry_key_iter, &dict_entry_value_iter);
+
+                        dbus_message_iter_get_basic(&dict_entry_value_iter, &ret);
+                        std::cout << "Device Paired: " << ret << std::endl;
+                    }
+                    else if (std::string(property_name) == "Bonded")
+                    {
+                        dbus_bool_t ret = FALSE;
+                        dbus_message_iter_next(&dict_entry_key_iter);
+                        dbus_message_iter_recurse(&dict_entry_key_iter, &dict_entry_value_iter);
+
+                        dbus_message_iter_get_basic(&dict_entry_value_iter, &ret);
+                        std::cout << "Device Bonded: " << ret << std::endl;
+                    }
+                    else if (std::string(property_name) == "Connected")
+                    {
+                        dbus_bool_t ret = FALSE;
+                        dbus_message_iter_next(&dict_entry_key_iter);
+                        dbus_message_iter_recurse(&dict_entry_key_iter, &dict_entry_value_iter);
+
+                        dbus_message_iter_get_basic(&dict_entry_value_iter, &ret);
+                        std::cout << "Device Connected: " << ret << std::endl;
+                    }
+                    else if (std::string(property_name) == "UUIDs")
+                    {
+                        dbus_message_iter_next(&dict_entry_key_iter);
+                        dbus_message_iter_recurse(&dict_entry_key_iter, &dict_entry_value_iter);
+                        
+                        if (dbus_message_iter_get_arg_type(&dict_entry_value_iter) == DBUS_TYPE_ARRAY) {
+                            DBusMessageIter uuid_iter;
+                            dbus_message_iter_recurse(&dict_entry_value_iter, &uuid_iter);
+                            std::cout << "UUIDs: " ;
+                            while (dbus_message_iter_get_arg_type(&uuid_iter) == DBUS_TYPE_STRING) {
+                                const char* uuid;
+                                dbus_message_iter_get_basic(&uuid_iter, &uuid);
+                                std::cout << BluetoothAdapter::getProfile(uuid) << " | ";
+                                dbus_message_iter_next(&uuid_iter);
+                            }
+                        }       
+                        std::cout << std::endl;
+                    }            
+                    else if (std::string(property_name) == "Adapter") {
+                        dbus_message_iter_next(&dict_entry_key_iter);
+                        dbus_message_iter_recurse(&dict_entry_key_iter, &dict_entry_value_iter);
+                        const char* adapter_path;
+                        dbus_message_iter_get_basic(&dict_entry_value_iter, &adapter_path);
+                        std::cout << "Adapter Path: " << adapter_path << std::endl;
+                    }
+                    else {
+
+                    }
                     dbus_message_iter_next(&dict_entry_iter);
                 }
             } else {
@@ -467,11 +479,7 @@ void BluetoothAdapter::discoveringHandler()
                         goto Unref;
                     }
 
-                    getDeviceName(mNetwork.mConnection, device_path);
-                    getDeviceProperty(mNetwork.mConnection, device_path, "Address", G_BT_INTERFACE_DEVICE1);
-                    getDeviceProperty(mNetwork.mConnection, device_path, "Name", G_BT_INTERFACE_DEVICE1);
-                    getDeviceProperty(mNetwork.mConnection, device_path, "UUIDs", G_BT_INTERFACE_DEVICE1);
-
+                    getDeviceInfo(mNetwork.mConnection, device_path);
                 }
             } else if (dbus_message_is_signal(message, G_INTERFACE_DBUS_PROP, G_SIGNAL_PROPERTIES_CHANGED)) {
                 DBusMessageIter args;
@@ -483,8 +491,7 @@ void BluetoothAdapter::discoveringHandler()
                 if (0 == strcmp(interface_name, G_BT_INTERFACE_DEVICE1)) {
                     std::cout << "Device properties changed!" << std::endl;
                     const char *device_path = dbus_message_get_path(message);
-                    getDeviceProperty(mNetwork.mConnection, device_path, "Name", G_BT_INTERFACE_DEVICE1);
-                    getDeviceProperty(mNetwork.mConnection, device_path, "UUIDs", G_BT_INTERFACE_DEVICE1);
+                    getDeviceInfo(mNetwork.mConnection, device_path);
                 }
             }
 Unref:

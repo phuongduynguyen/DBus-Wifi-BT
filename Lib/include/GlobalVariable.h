@@ -1,10 +1,10 @@
 #ifndef GLOBAL_VARIABLE
 #define GLOBAL_VARIABLE
 
-    static const int G_STATE_UNPAIRED = 0x0000000a;
-    static const int G_STATE_PAIRED = 0x0000000b;
-    static const int G_STATE_DISCONNECT = 0x0000000c;
-    static const int G_STATE_CONNECTED = 0x0000000d;
+    static constexpr const int G_STATE_UNPAIRED = 0x0000000a;
+    static constexpr const int G_STATE_PAIRED = 0x0000000b;
+    static constexpr const int G_STATE_DISCONNECT = 0x0000000c;
+    static constexpr const int G_STATE_CONNECTED = 0x0000000d;
 
     static constexpr const char* G_BT_SERVICE_NAME = "org.bluez";
     static constexpr const char* G_BT_OBJECT_PATH = "/org/bluez/hci0";
