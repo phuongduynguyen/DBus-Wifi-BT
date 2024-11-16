@@ -17,6 +17,9 @@
 #include <ostream>
 #include <cstring>
 #include <condition_variable>
+#include <utility>
+#include <tuple>
+#include <type_traits>
 #include "GlobalVariable.h"
 
 class NetworkProvider;
@@ -58,7 +61,9 @@ class BluetoothAdapter
         static std::unordered_map<std::string, std::string> gProfileMap;
         static BluetoothAdapter& initialize(NetworkProvider& network);
         static BluetoothAdapter& getInstance();
-        static std::string getProfile(const char* uuid);
+
+        template<typename T>
+        static std::string getProfile(const T& uuid);
 
         void startDiscovery();
         void stopDiscovery();
@@ -74,17 +79,25 @@ class BluetoothAdapter
         
     private:
         BluetoothAdapter(NetworkProvider& network);
+        ~BluetoothAdapter();
         void discoveringHandler();
+        void bluetoothActionHandler();
+        bool existsPaired(const std::string& devicePath);
 
-        std::unordered_map<std::string, std::shared_ptr<BluetoothDevice>> mDevices;
+        std::unordered_map<std::string, std::shared_ptr<BluetoothDevice>> mDevicesTable;
+        std::list<std::tuple<std::string, std::string, std::string, std::vector<std::string>>> mDeviceInfosQueues;
         NetworkProvider& mNetwork;
         std::string mBluetoothName;
         std::string mBluetoothAddress;
         mutable std::shared_mutex mMutex;
         std::mutex mDiscoveringMutex;
         std::condition_variable mDiscoveringCV;
+        std::mutex mBluetoothActionMutex;
+        std::condition_variable mBluetoothActionCV;
         bool mDiscovering;
         std::thread* mDiscoveringThread;
+        std::thread* mBluetoothActionThread;
+
 
 };
 #endif

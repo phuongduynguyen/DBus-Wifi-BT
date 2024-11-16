@@ -31,7 +31,14 @@ std::unordered_map<std::string, std::string> BluetoothAdapter::gProfileMap = {
                                                                                 {"00001800-0000-1000-8000-00805f9b34fb", "GAP"}, // Generic Access Profile
                                                                                 {"0000180a-0000-1000-8000-00805f9b34fb", "DIS"}, // Device Information Service
                                                                                 {"9fa480e0-4967-4542-9390-d343dc5d04ae", "TDS"}, // Transport Discovery Service
-                                                                                {"d0611e78-bbb4-4591-a5f8-487910ae4366", "AMS"}, // Apple Media Service 
+                                                                                {"d0611e78-bbb4-4591-a5f8-487910ae4366", "AMS"}, // Apple Media Service
+                                                                                {"00001105-0000-1000-8000-00805f9b34fb", "OPP"}, // OBEX Object Push Profile
+                                                                                {"00001112-0000-1000-8000-00805f9b34fb","HSP-AG"}, // Headset Profile (HSP) - Audio Gateway (AG)
+                                                                                {"00001115-0000-1000-8000-00805f9b34fb", "PAN"}, // Personal Area Networking
+                                                                                {"0000FE03-0000-1000-8000-00805F9B34FB", "VendorId - Baidu"},
+                                                                                {"0000FDDF-0000-1000-8000-00805F9B34FB", "VendorId - Amazon"},
+                                                                                {"00001203-0000-1000-8000-00805F9B34FB", "GAVDP"}, // eneric Audio/Video Distribution Profile
+                                                                                {"0000110F-0000-1000-8000-00805F9B34FB", "AVRCP"}, // Audio/Video Remote Control Profile
                                                                             };
 
 
@@ -51,9 +58,21 @@ BluetoothAdapter& BluetoothAdapter::getInstance()
     return *gInstance;
 }
 
-std::string BluetoothAdapter::getProfile(const char* uuid)
+template<typename T>
+std::string BluetoothAdapter::getProfile(const T& uuid)
 {
-    std::string ret = std::string(uuid);
+    std::string ret;
+    if constexpr (std::is_same_v<T, std::string>) {
+        ret = uuid;
+    }
+    else if constexpr (std::is_same_v<T, const char*>) {
+        ret = std::string(uuid);
+    }
+    else {
+        // Do nothing
+        return "";
+    }
+
     std::unordered_map<std::string, std::string>::iterator foundItem = gProfileMap.begin();
     while (foundItem != gProfileMap.end())
     {
@@ -63,13 +82,33 @@ std::string BluetoothAdapter::getProfile(const char* uuid)
         }
         foundItem++;
     }
+
     return ret;
 }
 
-BluetoothAdapter::BluetoothAdapter(NetworkProvider& network) : mNetwork(network), mDiscovering(false), mDiscoveringThread(nullptr)
+BluetoothAdapter::BluetoothAdapter(NetworkProvider& network) : mNetwork(network), mDiscovering(false), mDiscoveringThread(nullptr), mBluetoothActionThread(nullptr)
 {
     mDiscoveringThread = new std::thread(std::bind(&BluetoothAdapter::discoveringHandler, this));
-    
+    mBluetoothActionThread = new std::thread(std::bind(&BluetoothAdapter::bluetoothActionHandler, this));
+}
+
+BluetoothAdapter::~BluetoothAdapter()
+{
+    if (nullptr != mDiscoveringThread) {
+        mDiscoveringThread->join();
+        delete mDiscoveringThread;
+        mDiscoveringThread = nullptr;
+    }
+    if (nullptr != mBluetoothActionThread) {
+        mBluetoothActionThread->join();
+        delete mBluetoothActionThread;
+        mBluetoothActionThread = nullptr;
+    }
+
+    {
+        std::lock_guard<std::shared_mutex> lock(mMutex);
+        mDeviceInfosQueues.clear();
+    }
 }
 
 void BluetoothAdapter::startDiscovery()
@@ -323,10 +362,54 @@ std::vector<std::shared_ptr<BluetoothDevice>> BluetoothAdapter::getBondedDevices
     return ret;
 }
 
+bool BluetoothAdapter::existsPaired(const std::string& devicePath)
+{
+    bool ret = false;
+    std::unordered_map<std::string, std::shared_ptr<BluetoothDevice>>::iterator foundedItem = mDevicesTable.begin();
+    while (foundedItem != mDevicesTable.end())
+    {
+        if (foundedItem->first == devicePath) {
+            ret = true;
+            break;
+        }
+        foundedItem++;
+    }
+    return ret;
+}
+
+void BluetoothAdapter::bluetoothActionHandler()
+{
+    while (true)
+    {
+        std::list<std::tuple<std::string, std::string, std::string, std::vector<std::string>>>  deviceInfosQueues;
+        {
+            std::unique_lock<std::mutex> cvLock(mBluetoothActionMutex);
+            if (deviceInfosQueues.empty()) {
+                mBluetoothActionCV.wait(cvLock);
+            }
+
+            deviceInfosQueues = mDeviceInfosQueues;
+            mDeviceInfosQueues.clear();
+        }
+        while(!deviceInfosQueues.empty()) {
+            std::tuple<std::string, std::string, std::string, std::vector<std::string>> deviceInfo = deviceInfosQueues.front();
+            deviceInfosQueues.pop_front();
+            std::cout << "\nDevice found: \n" << " - Name: " << std::get<1>(deviceInfo) << "\n - Address: " << std::get<2>(deviceInfo) << "\n - DevicePath: " << std::get<0>(deviceInfo);
+            std::vector<std::string> uuids = std::get<3>(deviceInfo);
+            std::cout << "\n UUIDs: ";
+            for (int i = 0; i < uuids.size(); i++)
+            {
+                std::cout << getProfile(uuids[i]) << " | " ;
+            }
+             
+        }
+    }
+}
+
+
 void BluetoothAdapter::discoveringHandler()
 {
-
-    static std::function<void(DBusConnection*, const char*)> getDeviceInfo = [this](DBusConnection *conn, const char* device_path) {
+    std::function<void(DBusConnection*, const char*)> getDeviceInfo = [this](DBusConnection *conn, const char* device_path) {
         DBusMessage* message;
         DBusMessage* reply;
         DBusError err;
@@ -347,16 +430,19 @@ void BluetoothAdapter::discoveringHandler()
             dbus_error_free(&err);
             return;
         }
-
+        std::string deviceName;
+        std::string deviceAddress;
+        std::vector<std::string> uuids;
         if (nullptr != reply) {
             if (dbus_message_iter_init(reply, &iter) && dbus_message_iter_get_arg_type(&iter) == DBUS_TYPE_ARRAY) {
                 dbus_message_iter_recurse(&iter, &dict_entry_iter);
                 while (dbus_message_iter_get_arg_type(&dict_entry_iter) == DBUS_TYPE_DICT_ENTRY) {
+
                     DBusMessageIter dict_entry_key_iter, dict_entry_value_iter;
                     dbus_message_iter_recurse(&dict_entry_iter, &dict_entry_key_iter);
                     const char* property_name;
                     dbus_message_iter_get_basic(&dict_entry_key_iter, &property_name);
-                    // std::cout << "- Property : " << std::string(property_name) << "\n";
+
                     if (std::string(property_name) == "Name") {
                         dbus_message_iter_next(&dict_entry_key_iter);
                         dbus_message_iter_recurse(&dict_entry_key_iter, &dict_entry_value_iter);
@@ -364,15 +450,16 @@ void BluetoothAdapter::discoveringHandler()
                         const char* device_name;
                         dbus_message_iter_get_basic(&dict_entry_value_iter, &device_name);
                         std::cout << "Device Name: " << device_name << std::endl;
-                        // break;
+                        deviceName = std::string(device_name);
                     }
                     else if (std::string(property_name) == "Address") {
                         dbus_message_iter_next(&dict_entry_key_iter);
                         dbus_message_iter_recurse(&dict_entry_key_iter, &dict_entry_value_iter);
 
-                        const char* device_name;
-                        dbus_message_iter_get_basic(&dict_entry_value_iter, &device_name);
-                        std::cout << "Device address: " << device_name << std::endl;
+                        const char* device_address;
+                        dbus_message_iter_get_basic(&dict_entry_value_iter, &device_address);
+                        std::cout << "Device address: " << device_address << std::endl;
+                        deviceAddress = std::string(device_address);
                     }
                     else if (std::string(property_name) == "Paired")
                     {
@@ -414,6 +501,7 @@ void BluetoothAdapter::discoveringHandler()
                                 const char* uuid;
                                 dbus_message_iter_get_basic(&uuid_iter, &uuid);
                                 std::cout << BluetoothAdapter::getProfile(uuid) << " | ";
+                                uuids.emplace_back(std::string(uuid));
                                 dbus_message_iter_next(&uuid_iter);
                             }
                         }       
@@ -431,6 +519,9 @@ void BluetoothAdapter::discoveringHandler()
                     }
                     dbus_message_iter_next(&dict_entry_iter);
                 }
+
+                mDeviceInfosQueues.emplace_back(std::make_tuple(std::string(device_path),deviceName,deviceAddress, uuids));
+                mBluetoothActionCV.notify_all();
             } else {
                 std::cerr << "Failed to initialize iterator or invalid response format\n";
             }
@@ -460,6 +551,7 @@ void BluetoothAdapter::discoveringHandler()
                 return mDiscovering;
             });
         }
+        
 
         dbus_connection_read_write(mNetwork.mConnection, 0);
         message = dbus_connection_pop_message(mNetwork.mConnection);
@@ -472,14 +564,15 @@ void BluetoothAdapter::discoveringHandler()
                 if (dbus_message_iter_get_arg_type(&args) == DBUS_TYPE_OBJECT_PATH) {
                     const char *device_path;
                     dbus_message_iter_get_basic(&args, &device_path);
-                    std::cout << "\nDevice found: " << device_path << std::endl;
                     static std::regex pattern("/org/bluez/");
                     if (!std::regex_search(std::string(device_path), pattern)) {
                         std::cout << "\nDevice found: " << device_path << " not Bluetooth device "<< std::endl;
                         goto Unref;
                     }
-
-                    getDeviceInfo(mNetwork.mConnection, device_path);
+                    {
+                        std::lock_guard<std::mutex> lock(mBluetoothActionMutex);
+                        getDeviceInfo(mNetwork.mConnection, device_path);
+                    }
                 }
             } else if (dbus_message_is_signal(message, G_INTERFACE_DBUS_PROP, G_SIGNAL_PROPERTIES_CHANGED)) {
                 DBusMessageIter args;
@@ -489,7 +582,7 @@ void BluetoothAdapter::discoveringHandler()
                 dbus_message_iter_get_basic(&args, &interface_name);
 
                 if (0 == strcmp(interface_name, G_BT_INTERFACE_DEVICE1)) {
-                    std::cout << "Device properties changed!" << std::endl;
+                    std::cout << "\nDevice properties changed!" << std::endl;
                     const char *device_path = dbus_message_get_path(message);
                     getDeviceInfo(mNetwork.mConnection, device_path);
                 }
