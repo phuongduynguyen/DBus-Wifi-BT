@@ -23,7 +23,8 @@ class NetworkProvider
         void setScanMode(bool isScan);
         std::string getBluetoothName() const;
         std::string getBluetoothAddress() const;
-
+        void dumpBluetoothDevices();
+        
     private:
         NetworkProvider();
         ~NetworkProvider();

@@ -27,6 +27,7 @@ class BluetoothAdapter;
 
 class BluetoothDevice
 {
+
     friend class BluetoothAdapter;
     public:
 
@@ -40,11 +41,13 @@ class BluetoothDevice
         void createBond();
         void destroyBond();
         void connectProfile(const std::string& profile);
+        void dump();
 
-    private:
+    protected:
         BluetoothDevice(BluetoothAdapter& adapter, const std::string& deviceName, const std::string& deviceAddress, const std::string& devicePath ,const std::vector<std::string>& uuids);
 
         BluetoothAdapter& mAdapter;
+        mutable std::shared_mutex mMutex;
         std::vector<std::string> mUUIDs;
         std::string mDeviceName;
         std::string mDeviceAddress;
@@ -54,6 +57,8 @@ class BluetoothDevice
 
 class BluetoothAdapter
 {
+    template<typename... Args>
+    friend std::shared_ptr<BluetoothDevice> std::make_shared(Args&&... args);
     friend class NetworkProvider;
     friend class BluetoothDevice;
     public:
@@ -67,16 +72,16 @@ class BluetoothAdapter
 
         void startDiscovery();
         void stopDiscovery();
-
         void toggleBluetoothPower();
-
+        void dumpDevicesUnpaired();
+        void dumpDevicesPaired();
         bool getBluetoothPower() const;
 
         std::string getBluetoothName() const;
         std::string getBluetoothAddress() const;
-
         std::vector<std::shared_ptr<BluetoothDevice>> getBondedDevices() const;
         
+
     private:
         BluetoothAdapter(NetworkProvider& network);
         ~BluetoothAdapter();

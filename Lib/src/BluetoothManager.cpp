@@ -13,10 +13,11 @@ std::unordered_map<std::string, std::string> BluetoothAdapter::gProfileMap = {
                                                                                 {"0000112f-0000-1000-8000-00805f9b34fb", "PBAP"}, // Phone Book Access Profile
                                                                                 {"0000110a-0000-1000-8000-00805f9b34fb", "Audio-Source"},
                                                                                 {"0000110b-0000-1000-8000-00805f9b34fb", "Audio-Sink"},
-                                                                                {"0000110e-0000-1000-8000-00805f9b34fb", "A2DP-Source"},
-                                                                                {"0000110c-0000-1000-8000-00805f9b34fb", "A2DP-Sink"},
+                                                                                {"0000110e-0000-1000-8000-00805f9b34fb", "A2DP-Source"}, // A/V Remote Control
+                                                                                {"0000110c-0000-1000-8000-00805f9b34fb", "A2DP-Sink"}, // A/V Remote Control Target
                                                                                 {"0000110d-0000-1000-8000-00805f9b34fb", "A2DP"}, // Advanced Audio Distribution Profile
                                                                                 {"00001116-0000-1000-8000-00805f9b34fb", "HSP"}, // Headset Profile
+                                                                                {"00001108-0000-1000-8000-00805f9b34fb", "HSP-Audio-Headphones"},
                                                                                 {"00001132-0000-1000-8000-00805f9b34fb", "MAP"}, // Message Access Profile
                                                                                 {"00001801-0000-1000-8000-00805f9b34fb", "GATT"}, // Generic Attribute Profile
                                                                                 {"00000000-deca-fade-deca-deafdecacafe", "Custom-Profile"},
@@ -39,6 +40,11 @@ std::unordered_map<std::string, std::string> BluetoothAdapter::gProfileMap = {
                                                                                 {"0000FDDF-0000-1000-8000-00805F9B34FB", "VendorId - Amazon"},
                                                                                 {"00001203-0000-1000-8000-00805F9B34FB", "GAVDP"}, // eneric Audio/Video Distribution Profile
                                                                                 {"0000110F-0000-1000-8000-00805F9B34FB", "AVRCP"}, // Audio/Video Remote Control Profile
+                                                                                {"00001101-0000-1000-8000-00805f9b34fb", "Serial-Port"},
+                                                                                {"00001124-0000-1000-8000-00805f9b34fb", "HID"}, // Human Interface Device
+                                                                                {"0000180f-0000-1000-8000-00805f9b34fb", "BS"}, // Battery Service
+                                                                                {"0000fd72-0000-1000-8000-00805f9b34fb", "LIS"}, // Logitech International SA
+                                                                                {"00010000-0000-1000-8000-011f2000046d", "Logitech-Vendor-Id"},
                                                                             };
 
 
@@ -355,7 +361,6 @@ std::string BluetoothAdapter::getBluetoothAddress() const
     }
 }
 
-
 std::vector<std::shared_ptr<BluetoothDevice>> BluetoothAdapter::getBondedDevices() const
 {
     std::vector<std::shared_ptr<BluetoothDevice>> ret;
@@ -401,11 +406,12 @@ void BluetoothAdapter::bluetoothActionHandler()
             {
                 std::cout << getProfile(uuids[i]) << " | " ;
             }
-             
+            if (!existsPaired(std::get<0>(deviceInfo))) {
+                mDevicesTable.emplace(std::get<0>(deviceInfo),new BluetoothDevice(*this, std::get<1>(deviceInfo),std::get<2>(deviceInfo),std::get<0>(deviceInfo), uuids));
+            }
         }
     }
 }
-
 
 void BluetoothAdapter::discoveringHandler()
 {
@@ -596,6 +602,21 @@ Unref:
     }
 }
 
+void BluetoothAdapter::dumpDevicesUnpaired()
+{
+    std::unordered_map<std::string, std::shared_ptr<BluetoothDevice>>::iterator item = mDevicesTable.begin();
+    while (item != mDevicesTable.end())
+    {
+        item->second->dump();
+        item++;
+    }    
+}
+
+void BluetoothAdapter::dumpDevicesPaired()
+{
+
+}
+
 /*========================================================================================================*/
 
 BluetoothDevice::BluetoothDevice(BluetoothAdapter& adapter, const std::string& deviceName, const std::string& deviceAddress, const std::string& devicePath ,const std::vector<std::string>& uuids) : mAdapter(adapter), 
@@ -609,28 +630,32 @@ BluetoothDevice::BluetoothDevice(BluetoothAdapter& adapter, const std::string& d
 
 std::string BluetoothDevice::getDeviceName() const
 {
-    return "";
+    std::lock_guard<std::shared_mutex> lock(mMutex);
+    return mDeviceName;
 }
 
 std::string BluetoothDevice::getDeviceAddress() const
 {
-    return "";
+    std::lock_guard<std::shared_mutex> lock(mMutex);
+    return mDeviceAddress;
 }
 
 std::string BluetoothDevice::getDevicePath() const
 {
-    return "";
+    std::lock_guard<std::shared_mutex> lock(mMutex);
+    return mDevicePath;
 }
 
 int BluetoothDevice::getState() const
 {
-    return 0;
+    std::lock_guard<std::shared_mutex> lock(mMutex);
+    return mState;
 }
 
 std::vector<std::string> BluetoothDevice::getUUIDs() const
 {
-    std::vector<std::string> ret;
-    return ret;
+    std::lock_guard<std::shared_mutex> lock(mMutex);
+    return mUUIDs;
 };
 
 void BluetoothDevice::createBond()
@@ -646,6 +671,16 @@ void BluetoothDevice::destroyBond()
 void BluetoothDevice::connectProfile(const std::string& profile)
 {
 
+}
+
+void BluetoothDevice::dump()
+{
+    std::cout << "\n Device : " << mDeviceAddress << "\n\t Name: " << mDeviceName 
+                                                  << "\n\t DevicePath: " << mDevicePath
+                                                  << "\n\t UUIDs: ";
+    for (int i = 0; i < mUUIDs.size(); i++) {
+        std::cout << BluetoothAdapter::getProfile(mUUIDs[i]) << " | " ;
+    }
 }
 
 

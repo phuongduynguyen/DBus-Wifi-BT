@@ -27,6 +27,9 @@ int main(void)
         else if(input == "address") {
             std::cout << "Central address: " << NetworkProvider::getInstance().getBluetoothAddress() << "\n";
         }
+        else if(input == "listscan"){
+            NetworkProvider::getInstance().dumpBluetoothDevices();
+        }
         else {
 
         }

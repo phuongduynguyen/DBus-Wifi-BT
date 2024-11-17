@@ -4,6 +4,9 @@ project(Network LANGUAGES CXX)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(LIB_NAME Network)
 
+# Position Independent Code
+add_compile_options("-fPIC")
+
 # Use pkg-config to find DBus and GLib
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(DBUS REQUIRED dbus-1)
