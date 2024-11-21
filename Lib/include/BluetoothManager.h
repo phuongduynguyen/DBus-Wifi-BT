@@ -20,6 +20,7 @@
 #include <utility>
 #include <tuple>
 #include <type_traits>
+#include <optional>
 #include "GlobalVariable.h"
 
 class NetworkProvider;
@@ -35,12 +36,14 @@ class BluetoothDevice
         std::string getDeviceAddress() const;
         std::string getDevicePath() const;
 
-        int getState() const;
+        Status getStatus() const;
         std::vector<std::string> getUUIDs() const;
 
         void createBond();
         void destroyBond();
         void connectProfile(const std::string& profile);
+        void setStatus(const Status& state);
+        void setUUIDs(const std::vector<std::string>& uuids);
         void dump();
 
     protected:
@@ -52,7 +55,7 @@ class BluetoothDevice
         std::string mDeviceName;
         std::string mDeviceAddress;
         std::string mDevicePath;
-        int mState;
+        Status mState;
 };
 
 class BluetoothAdapter
@@ -85,10 +88,11 @@ class BluetoothAdapter
     private:
         BluetoothAdapter(NetworkProvider& network);
         ~BluetoothAdapter();
+
         void discoveringHandler();
         void bluetoothActionHandler();
         bool existsPaired(const std::string& devicePath);
-
+        
         std::unordered_map<std::string, std::shared_ptr<BluetoothDevice>> mDevicesTable;
         std::list<std::tuple<std::string, std::string, std::string, std::vector<std::string>>> mDeviceInfosQueues;
         NetworkProvider& mNetwork;
@@ -102,7 +106,5 @@ class BluetoothAdapter
         bool mDiscovering;
         std::thread* mDiscoveringThread;
         std::thread* mBluetoothActionThread;
-
-
 };
 #endif

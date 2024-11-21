@@ -45,6 +45,8 @@ std::unordered_map<std::string, std::string> BluetoothAdapter::gProfileMap = {
                                                                                 {"0000180f-0000-1000-8000-00805f9b34fb", "BS"}, // Battery Service
                                                                                 {"0000fd72-0000-1000-8000-00805f9b34fb", "LIS"}, // Logitech International SA
                                                                                 {"00010000-0000-1000-8000-011f2000046d", "Logitech-Vendor-Id"},
+                                                                                {"0000111e-0000-1000-8000-00805f9b34fb", "HFP-HV-SK579BT"},
+                                                                                {"00001812-0000-1000-8000-00805f9b34fb","HID-Logitech"},
                                                                             };
 
 
@@ -94,8 +96,150 @@ std::string BluetoothAdapter::getProfile(const T& uuid)
 
 BluetoothAdapter::BluetoothAdapter(NetworkProvider& network) : mNetwork(network), mDiscovering(false), mDiscoveringThread(nullptr), mBluetoothActionThread(nullptr)
 {
-    mDiscoveringThread = new std::thread(std::bind(&BluetoothAdapter::discoveringHandler, this));
-    mBluetoothActionThread = new std::thread(std::bind(&BluetoothAdapter::bluetoothActionHandler, this));
+    std::function<std::optional<std::vector<std::string>>(DBusConnection*)> getPairedDevicesPath = [](DBusConnection* connection) -> std::optional<std::vector<std::string>> {
+        std::vector<std::string> devicePaths;
+        DBusError error;
+        DBusMessage* message = dbus_message_new_method_call(
+            "org.bluez",                  // Service name
+            "/",                          // Object path
+            "org.freedesktop.DBus.ObjectManager", // Interface
+            "GetManagedObjects"           // Method
+        );
+
+        if (nullptr == message) {
+            std::cerr << "Failed to create D-Bus message.\n";
+            return {};
+        }
+
+        DBusMessage* reply = dbus_connection_send_with_reply_and_block(connection, message, -1, &error);
+        if (nullptr == reply) {
+            std::cerr << "Failed to send D-Bus message.\n";
+            return {};
+        }
+        
+        DBusMessageIter iter;
+        if (dbus_message_iter_init(reply, &iter)) {
+            DBusMessageIter dict_entry;
+            dbus_message_iter_recurse(&iter, &dict_entry);
+
+            while (dbus_message_iter_get_arg_type(&dict_entry) != DBUS_TYPE_INVALID) {
+                const char* objectPath;
+                dbus_message_iter_recurse(&dict_entry, &iter);
+                dbus_message_iter_get_basic(&iter, &objectPath);
+                static std::regex pattern("^/org/bluez/hci0/dev_[^/]*$");
+                if (std::regex_search(std::string(objectPath), pattern)) {
+                    devicePaths.emplace_back(objectPath);
+                }
+                dbus_message_iter_next(&dict_entry);
+            }
+        }
+        dbus_message_unref(message);
+        dbus_message_unref(reply);
+        return devicePaths;
+    };
+
+    std::function<std::shared_ptr<BluetoothDevice>(DBusConnection*,const std::string&)> getDevice = [this](DBusConnection* connection, const std::string& devicePath) -> std::shared_ptr<BluetoothDevice> {
+        DBusError error;
+        dbus_error_init(&error);
+
+        DBusMessage* message = dbus_message_new_method_call(
+            "org.bluez",                  // Service name
+            devicePath.c_str(),          // Object path
+            "org.freedesktop.DBus.Properties", // Interface
+            "GetAll"                      // Method
+        );
+
+        if (nullptr == message) {
+            std::cerr << "Failed to create D-Bus message.\n";
+            return nullptr;
+        }
+
+        const char* interface_name = "org.bluez.Device1";
+        dbus_message_append_args(message, DBUS_TYPE_STRING, &interface_name, DBUS_TYPE_INVALID);
+
+        DBusMessage* reply = dbus_connection_send_with_reply_and_block(connection, message, -1, &error);
+        if (dbus_error_is_set(&error)) {
+            std::cerr << "Error getting device info: " << error.message << std::endl;
+            dbus_error_free(&error);
+            return nullptr;
+        }
+        std::string devName = "";
+        std::string devAddress = "";
+        std::vector<std::string> uuids;
+        bool isConnected = false;
+        bool isPaired = false;
+
+        DBusMessageIter iter;
+        if (dbus_message_iter_init(reply, &iter)) {
+            DBusMessageIter dict;
+            dbus_message_iter_recurse(&iter, &dict);
+
+            while (dbus_message_iter_get_arg_type(&dict) != DBUS_TYPE_INVALID) {
+                const char* key;
+                dbus_message_iter_recurse(&dict, &iter);
+                dbus_message_iter_get_basic(&iter, &key);
+                dbus_message_iter_next(&iter);
+                if (strcmp(key, "Name") == 0) {
+                    const char* name;
+                    dbus_message_iter_recurse(&iter, &iter);
+                    dbus_message_iter_get_basic(&iter, &name);
+                    devName = name ? std::string(name) : "Unknown";
+                } else if (strcmp(key, "Address") == 0) {
+                    const char* address;
+                    dbus_message_iter_recurse(&iter, &iter);
+                    dbus_message_iter_get_basic(&iter, &address);
+                    devAddress = address ? std::string(address) : "Unknown";
+                } else if (strcmp(key, "UUIDs") == 0) {
+                    DBusMessageIter array;
+                    dbus_message_iter_recurse(&iter, &array);
+                    if (dbus_message_iter_get_arg_type(&array) == DBUS_TYPE_ARRAY) {
+                        DBusMessageIter uuid_iter;
+                        dbus_message_iter_recurse(&array, &uuid_iter);
+                        while (dbus_message_iter_get_arg_type(&uuid_iter) == DBUS_TYPE_STRING) {
+                            const char* uuid;
+                            dbus_message_iter_get_basic(&uuid_iter, &uuid);
+                            uuids.emplace_back(std::string(uuid));
+                            dbus_message_iter_next(&uuid_iter);
+                        }
+                    }
+                } else if (strcmp(key, "Connected") == 0) {
+                    bool connected = false;
+                    dbus_message_iter_recurse(&iter, &iter);
+                    dbus_message_iter_get_basic(&iter, &connected);
+                    isConnected = connected;
+                }
+                else if (strcmp(key, "Paired") == 0) {
+                    bool connected = false;
+                    dbus_message_iter_recurse(&iter, &iter);
+                    dbus_message_iter_get_basic(&iter, &connected);
+                }
+                else {
+                    // Do nothing
+                }
+                dbus_message_iter_next(&dict);
+            }
+        }
+        
+        std::shared_ptr<BluetoothDevice> device(new BluetoothDevice(*this,devName, devAddress, std::string(devicePath), uuids));
+        device->setStatus((isConnected == true ? Status::Connected : Status::Disconnected));
+        dbus_message_unref(message);
+        dbus_message_unref(reply);
+        return device;
+    };
+
+    std::once_flag init;
+    std::call_once(init, [this, getPairedDevicesPath, getDevice](){
+        std::optional<std::vector<std::string>> devicesPathOpt = getPairedDevicesPath(mNetwork.mConnection);
+        if (devicesPathOpt.has_value()) {
+            std::vector<std::string> devicesPath = devicesPathOpt.value();
+            for (int i = 0; i < devicesPath.size(); i++) {
+                mDevicesTable.emplace(devicesPath[i],getDevice(mNetwork.mConnection,devicesPath[i]));
+            }
+        }
+        dumpDevicesPaired();
+        mDiscoveringThread = new std::thread(std::bind(&BluetoothAdapter::discoveringHandler, this));
+        mBluetoothActionThread = new std::thread(std::bind(&BluetoothAdapter::bluetoothActionHandler, this));
+    });
 }
 
 BluetoothAdapter::~BluetoothAdapter()
@@ -607,18 +751,28 @@ void BluetoothAdapter::dumpDevicesUnpaired()
     std::unordered_map<std::string, std::shared_ptr<BluetoothDevice>>::iterator item = mDevicesTable.begin();
     while (item != mDevicesTable.end())
     {
-        item->second->dump();
+        if (item->second->getStatus() == Status::Unpaired) {
+            item->second->dump();
+        }
         item++;
     }    
 }
 
+
 void BluetoothAdapter::dumpDevicesPaired()
 {
-
+    std::unordered_map<std::string, std::shared_ptr<BluetoothDevice>>::iterator item = mDevicesTable.begin();
+    while (item != mDevicesTable.end())
+    {
+        if (item->second->getStatus() >= Status::Disconnected) {
+            item->second->dump();
+        }
+        item++;
+    }    
 }
 
-/*========================================================================================================*/
 
+/*========================================================================================================*/
 BluetoothDevice::BluetoothDevice(BluetoothAdapter& adapter, const std::string& deviceName, const std::string& deviceAddress, const std::string& devicePath ,const std::vector<std::string>& uuids) : mAdapter(adapter), 
                                                                                                                                                                                                      mDeviceName(deviceName),
                                                                                                                                                                                                      mDeviceAddress(deviceAddress),
@@ -646,7 +800,7 @@ std::string BluetoothDevice::getDevicePath() const
     return mDevicePath;
 }
 
-int BluetoothDevice::getState() const
+Status BluetoothDevice::getStatus() const
 {
     std::lock_guard<std::shared_mutex> lock(mMutex);
     return mState;
@@ -677,10 +831,16 @@ void BluetoothDevice::dump()
 {
     std::cout << "\n Device : " << mDeviceAddress << "\n\t Name: " << mDeviceName 
                                                   << "\n\t DevicePath: " << mDevicePath
+                                                  << "\n\t Status: " << mState
                                                   << "\n\t UUIDs: ";
     for (int i = 0; i < mUUIDs.size(); i++) {
         std::cout << BluetoothAdapter::getProfile(mUUIDs[i]) << " | " ;
     }
 }
 
+void BluetoothDevice::setStatus(const Status& state)
+{
+    std::unique_lock<std::shared_mutex> lock(mMutex);
+    mState = state;
+}
 

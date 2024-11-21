@@ -1,10 +1,11 @@
 #ifndef GLOBAL_VARIABLE
 #define GLOBAL_VARIABLE
-
-    static constexpr const int G_STATE_UNPAIRED = 0x0000000a;
-    static constexpr const int G_STATE_PAIRED = 0x0000000b;
-    static constexpr const int G_STATE_DISCONNECT = 0x0000000c;
-    static constexpr const int G_STATE_CONNECTED = 0x0000000d;
+    enum class Status
+    {
+        Unpaired,
+        Disconnected,
+        Connected
+    } ;
 
     static constexpr const char* G_BT_SERVICE_NAME = "org.bluez";
     static constexpr const char* G_BT_OBJECT_PATH = "/org/bluez/hci0";
@@ -26,5 +27,23 @@
     static constexpr const char* G_NM_DBUS_INTERFACE = "org.freedesktop.NetworkManager";
     static constexpr const char* G_SIGNAL_PROPERTIES_CHANGED = "PropertiesChanged";
     static constexpr const char* G_METHOD_WIRELESS_ENABLED = "WirelessEnabled";
+
+    inline std::ostream& operator<<(std::ostream& strm, const Status& value)
+    {
+        std::ostream *ptr = &strm;
+        static const char *valueTbl[] = {
+            "Unpaired",
+            "Disconnected",
+            "Connected"
+        };
+
+        if (static_cast<uint8_t>(value) < 3) {
+            strm << valueTbl[static_cast<uint8_t>(value)];
+        }
+        else {
+            strm << "unknown";
+        }
+        return *ptr;
+    }
 
 #endif
