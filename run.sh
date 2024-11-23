@@ -1,2 +1,3 @@
 # :v
+cd build/
 ./run
