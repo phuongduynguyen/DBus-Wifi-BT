@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Update dependencies
-        run: sudo apt-get update && sudo apt install libdbus-1-dev && sudo apt install pkg-config
+        run: sudo apt-get update && sudo apt install libdbus-1-dev && sudo apt install pkg-config && sudo apt install libdbus-glib-1-dev && sudo apt install libglib2.0-dev
 
       - name: Building
         run: ./build.sh
