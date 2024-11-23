@@ -515,6 +515,20 @@ void NetworkProvider::setScanMode(bool isScan)
         BluetoothAdapter::getInstance().stopDiscovery();
     } 
 }
+void NetworkProvider::connectProfile(const std::string& address, const std::string& profile)
+{
+    BluetoothAdapter::getInstance().connectProfile(address,profile);
+}
+
+void NetworkProvider::disconnectProfile(const std::string& address, const std::string& profile)
+{
+    BluetoothAdapter::getInstance().disconnectProfile(address,profile);
+}
+
+void NetworkProvider::disconnectBluetoothDevice(const std::string& address)
+{
+    BluetoothAdapter::getInstance().disconnectBluetooth(address);
+}
 
 bool NetworkProvider::getWiFiStatus()
 {

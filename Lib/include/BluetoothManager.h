@@ -28,7 +28,7 @@ class BluetoothAdapter;
 
 class BluetoothDevice
 {
-
+    friend class NetworkProvider;
     friend class BluetoothAdapter;
     public:
 
@@ -42,6 +42,9 @@ class BluetoothDevice
         void createBond();
         void destroyBond();
         void connectProfile(const std::string& profile);
+        void disconnectProfile(const std::string& profile);
+        void disconnect();
+        
         void setStatus(const Status& state);
         void setUUIDs(const std::vector<std::string>& uuids);
         void dump();
@@ -79,11 +82,13 @@ class BluetoothAdapter
         void dumpDevicesUnpaired();
         void dumpDevicesPaired();
         bool getBluetoothPower() const;
-
+        void disconnectBluetooth(const std::string& address);
+        void disconnectProfile(const std::string& address, const std::string& profile);
+        void connectProfile(const std::string& address, const std::string& profile);
         std::string getBluetoothName() const;
         std::string getBluetoothAddress() const;
         std::vector<std::shared_ptr<BluetoothDevice>> getBondedDevices() const;
-        
+        std::shared_ptr<BluetoothDevice> getBluetoothDevice(const std::string& address);
 
     private:
         BluetoothAdapter(NetworkProvider& network);

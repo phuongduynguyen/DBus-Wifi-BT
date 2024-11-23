@@ -9,6 +9,7 @@
 #include "BluetoothManager.h"
 class NetworkProvider
 {
+    friend class BluetoothDevice;
     friend class BluetoothAdapter;
     public:
         enum class NetworkType
@@ -21,8 +22,12 @@ class NetworkProvider
         static NetworkProvider& getInstance();
         void toggleNetWork(const NetworkType& type);
         void setScanMode(bool isScan);
+        void connectProfile(const std::string& address, const std::string& profile);
+        void disconnectProfile(const std::string& address, const std::string& profile);
+        void disconnectBluetoothDevice(const std::string& address);
         std::string getBluetoothName() const;
         std::string getBluetoothAddress() const;
+        
         void dumpBluetoothDevices();
         
     private:

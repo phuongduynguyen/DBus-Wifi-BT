@@ -30,8 +30,33 @@ int main(void)
         else if(input == "dump"){
             NetworkProvider::getInstance().dumpBluetoothDevices();
         }
-        else {
-
+        else if(input == "connect") {
+            std::string address;
+            std::string profile;
+            std::cout << "\nEnter Address: ";
+            std::getline(std::cin, address);
+            std::cout << "\nEnter profile: ";
+            std::getline(std::cin, profile);
+            NetworkProvider::getInstance().connectProfile(address, profile);
         }
+        else if(input == "disconnectprofile") {
+            std::string address;
+            std::string profile;
+            std::cout << "\nEnter Address: ";
+            std::getline(std::cin, address);
+            std::cout << "\nEnter profile: ";
+            std::getline(std::cin, profile);
+            NetworkProvider::getInstance().disconnectProfile(address, profile);
+        }
+        else if (input == "disconnect") {
+            std::string address;
+            std::cout << "\nEnter Address: ";
+            std::getline(std::cin, address);
+            NetworkProvider::getInstance().disconnectBluetoothDevice(address);
+        }
+        else {
+            
+        }
+        
     }
 }

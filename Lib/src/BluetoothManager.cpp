@@ -758,7 +758,6 @@ void BluetoothAdapter::dumpDevicesUnpaired()
     }    
 }
 
-
 void BluetoothAdapter::dumpDevicesPaired()
 {
     std::unordered_map<std::string, std::shared_ptr<BluetoothDevice>>::iterator item = mDevicesTable.begin();
@@ -771,6 +770,48 @@ void BluetoothAdapter::dumpDevicesPaired()
     }    
 }
 
+std::shared_ptr<BluetoothDevice> BluetoothAdapter::getBluetoothDevice(const std::string& address)
+{
+    std::unordered_map<std::string, std::shared_ptr<BluetoothDevice>>::iterator foundedItem = mDevicesTable.begin();
+    while (foundedItem != mDevicesTable.end())
+    {
+        if (foundedItem->second->getDeviceAddress() == address) {
+            return foundedItem->second;
+        }
+        foundedItem++;
+    }
+    return nullptr;
+}
+
+void BluetoothAdapter::disconnectBluetooth(const std::string& address)
+{
+    std::shared_ptr<BluetoothDevice> device = getBluetoothDevice(address);
+    if (nullptr == device) {
+        std::cout << "Not found device : " << address << '\n';
+        return;
+    }
+    device->disconnect();
+}
+
+void BluetoothAdapter::connectProfile(const std::string& address, const std::string& profile)
+{
+    std::shared_ptr<BluetoothDevice> device = getBluetoothDevice(address);
+    if (nullptr == device) {
+        std::cout << "Not found device : " << address << '\n';
+        return;
+    }
+    device->connectProfile(profile);
+}
+
+void BluetoothAdapter::disconnectProfile(const std::string& address, const std::string& profile)
+{
+    std::shared_ptr<BluetoothDevice> device = getBluetoothDevice(address);
+    if (nullptr == device) {
+        std::cout << "Not found device : " << address << '\n';
+        return;
+    }
+    device->disconnectProfile(profile);
+}
 
 /*========================================================================================================*/
 BluetoothDevice::BluetoothDevice(BluetoothAdapter& adapter, const std::string& deviceName, const std::string& deviceAddress, const std::string& devicePath ,const std::vector<std::string>& uuids) : mAdapter(adapter), 
@@ -824,7 +865,227 @@ void BluetoothDevice::destroyBond()
 
 void BluetoothDevice::connectProfile(const std::string& profile)
 {
+    DBusError err;
+    std::string uuid = "";
+    static std::function<std::string(std::string)> upperCase = [](std::string letter) -> std::string {
+        std::transform(letter.begin(), letter.end(), letter.begin(), [](unsigned char c){
+            if (c >= 'a' && c <= 'z') {
+                return std::toupper(static_cast<int>(c));
+            }
+            return static_cast<int>(c);
+        });
+        return letter;
+    };
+    std::unordered_map<std::string, std::string>::iterator foundedItem = BluetoothAdapter::gProfileMap.begin();
+    while (foundedItem != BluetoothAdapter::gProfileMap.end())
+    {
+        if (upperCase(foundedItem->second) == upperCase(profile)) {
+            uuid = foundedItem->first;
+            break;
+        }
+        foundedItem ++;
+    }
+    
+    if (uuid.empty()) {
+        std::cout << "Invalid profile request\n";
+        return;
+    }
+  
+    DBusMessage *message = dbus_message_new_method_call(
+        "org.bluez",
+        mDevicePath.c_str(),
+        "org.bluez.Device1",
+        "ConnectProfile"
+    );
 
+    if (nullptr == message) {
+        std::cerr << "Failed to create DBus message." << std::endl;
+        return;
+    }
+
+    DBusMessageIter args;
+    dbus_message_iter_init_append(message, &args);
+    if (!dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &uuid)) {
+        std::cerr << "Failed to append UUID to DBus message." << std::endl;
+        dbus_message_unref(message);
+        return;
+    }
+
+    DBusPendingCall *pending = nullptr;
+    if (!dbus_connection_send_with_reply(mAdapter.mNetwork.mConnection, message, &pending, -1)) {
+        std::cerr << "Failed to send DBus message." << std::endl;
+        dbus_message_unref(message);
+        return;
+    }
+
+    if (nullptr == pending) {
+        std::cerr << "Failed to create pending call for DBus message." << std::endl;
+        dbus_message_unref(message);
+        return;
+    }
+
+
+    dbus_connection_flush(mAdapter.mNetwork.mConnection);
+    dbus_message_unref(message);
+
+    dbus_pending_call_block(pending);
+    DBusMessage *reply = dbus_pending_call_steal_reply(pending);
+    dbus_pending_call_unref(pending);
+
+    if (nullptr == reply) {
+        std::cerr << "Failed to get reply from DBus." << std::endl;
+        return;
+    }
+
+    if (dbus_message_get_type(reply) == DBUS_MESSAGE_TYPE_ERROR) {
+        std::cerr << "Error in DBus reply: " << dbus_message_get_error_name(reply) << std::endl;
+        dbus_message_unref(reply);
+        return;
+    }
+
+    std::cout << "Connected to Bluetooth profile successfully!" << std::endl;
+    dbus_message_unref(reply);
+    return;
+}
+
+void BluetoothDevice::disconnectProfile(const std::string& profile)
+{
+    DBusError err;
+    dbus_error_init(&err);
+    std::string uuid = "";
+    static std::function<std::string(std::string)> upperCase = [](std::string letter) -> std::string {
+        std::transform(letter.begin(), letter.end(), letter.begin(), [](unsigned char c){
+            if (c >= 'a' && c <= 'z') {
+                return std::toupper(static_cast<int>(c));
+            }
+            return static_cast<int>(c);
+        });
+        return letter;
+    };
+
+    std::unordered_map<std::string, std::string>::iterator foundedItem = BluetoothAdapter::gProfileMap.begin();
+    while (foundedItem != BluetoothAdapter::gProfileMap.end())
+    {
+        if (upperCase(foundedItem->second) == upperCase(profile)) {
+            uuid = foundedItem->first;
+            break;
+        }
+        foundedItem ++;
+    }
+    
+    if (uuid.empty()) {
+        std::cout << "Invalid profile request\n";
+        return;
+    }
+    
+    
+    DBusMessage *message = dbus_message_new_method_call(
+        "org.bluez",
+        mDevicePath.c_str(),
+        "org.bluez.Device1",
+        "DisconnectProfile"
+    );
+
+    if (nullptr == message) {
+        std::cerr << "Failed to create DBus message." << std::endl;
+        return;
+    }
+
+    DBusMessageIter args;
+    dbus_message_iter_init_append(message, &args);
+    if (!dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &uuid)) {
+        std::cerr << "Failed to append UUID to DBus message." << std::endl;
+        dbus_message_unref(message);
+        return;
+    }
+
+    DBusPendingCall *pending = nullptr;
+    if (!dbus_connection_send_with_reply(mAdapter.mNetwork.mConnection, message, &pending, -1)) {
+        std::cerr << "Failed to send DBus message." << std::endl;
+        dbus_message_unref(message);
+        return;
+    }
+    if (nullptr == pending) {
+        std::cerr << "Failed to create pending call for DBus message." << std::endl;
+        dbus_message_unref(message);
+        return;
+    }
+
+
+    dbus_connection_flush(mAdapter.mNetwork.mConnection);
+    dbus_message_unref(message);
+
+    dbus_pending_call_block(pending);
+    DBusMessage *reply = dbus_pending_call_steal_reply(pending);
+    dbus_pending_call_unref(pending);
+
+    if (nullptr == reply) {
+        std::cerr << "Failed to get reply from DBus." << std::endl;
+        return;
+    }
+
+    if (dbus_message_get_type(reply) == DBUS_MESSAGE_TYPE_ERROR) {
+        std::cerr << "Error in DBus reply: " << dbus_message_get_error_name(reply) << std::endl;
+        dbus_message_unref(reply);
+        return;
+    }
+
+    std::cout << "Disconnected to Bluetooth profile successfully!" << std::endl;
+    dbus_message_unref(reply);
+    return;
+}
+
+void BluetoothDevice::disconnect()
+{
+    DBusError err;
+    dbus_error_init(&err);
+   
+    DBusMessage *message = dbus_message_new_method_call(
+        "org.bluez",
+        mDevicePath.c_str(),
+        "org.bluez.Device1",
+        "Disconnect"
+    );
+
+    if (nullptr == message) {
+        std::cerr << "Failed to create DBus message." << std::endl;
+        return;
+    }
+
+    DBusPendingCall *pending = nullptr;
+    if (!dbus_connection_send_with_reply(mAdapter.mNetwork.mConnection, message, &pending, -1)) {
+        std::cerr << "Failed to send DBus message." << std::endl;
+        dbus_message_unref(message);
+        return;
+    }
+    if (nullptr == pending) {
+        std::cerr << "Failed to create pending call for DBus message." << std::endl;
+        dbus_message_unref(message);
+        return;
+    }
+
+
+    dbus_connection_flush(mAdapter.mNetwork.mConnection);
+    dbus_message_unref(message);
+
+    dbus_pending_call_block(pending);
+    DBusMessage *reply = dbus_pending_call_steal_reply(pending);
+    dbus_pending_call_unref(pending);
+
+    if (nullptr == reply) {
+        std::cerr << "Failed to get reply from DBus." << std::endl;
+        return;
+    }
+
+    if (dbus_message_get_type(reply) == DBUS_MESSAGE_TYPE_ERROR) {
+        std::cerr << "Error in DBus reply: " << dbus_message_get_error_name(reply) << std::endl;
+        dbus_message_unref(reply);
+        return;
+    }
+
+    std::cout << "Disconnected to Bluetooth profile successfully!" << std::endl;
+    dbus_message_unref(reply);
+    return;
 }
 
 void BluetoothDevice::dump()
