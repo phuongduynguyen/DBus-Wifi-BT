@@ -25,6 +25,9 @@ jobs:
       - name: Building
         run: ./build.sh
 
+      - name: Enable permission
+        run:  chmod +x ./run.sh./run.sh
+
       - name: Running
         run: ./run.sh
       
