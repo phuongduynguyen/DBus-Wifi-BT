@@ -28,7 +28,8 @@ jobs:
       - name: Enable permission
         run:  chmod +x ./run.sh
 
-      - name: Running
-        run: ./run.sh
+      # Testing
+      # - name: Running
+      #   run: ./run.sh
       
 
