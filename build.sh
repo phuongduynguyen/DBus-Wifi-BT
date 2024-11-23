@@ -12,6 +12,3 @@ fi
 cd build/
 make install
 clear
-
-# Run the executable
-./run
