@@ -5,7 +5,7 @@
         Unpaired,
         Disconnected,
         Connected
-    } ;
+    };
 
     static constexpr const char* G_BT_SERVICE_NAME = "org.bluez";
     static constexpr const char* G_BT_OBJECT_PATH = "/org/bluez/hci0";

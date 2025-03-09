@@ -6,7 +6,7 @@
 #include <string>
 #include <thread>
 #include <functional>
-#include "BluetoothManager.h"
+
 class NetworkProvider
 {
     friend class BluetoothDevice;

@@ -1,4 +1,5 @@
 #include "NetworkProvider.h"
+#include "../include/private/BluetoothManager.h"
 
 static void dumpDbusMessage(DBusMessage* msg) {
     if (!msg) {
