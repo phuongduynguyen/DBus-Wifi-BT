@@ -44,6 +44,20 @@ class NetworkProvider
 
         DBusConnection* mConnection = nullptr;
         std::thread* mWorkerThread = nullptr;
-    };
+};
 
+extern "C" 
+{
+    NetworkProvider* np_initialize();
+    NetworkProvider* np_get_instance();
+    void np_toggle_network(NetworkProvider* np, NetworkProvider::NetworkType type);
+    void np_set_scan_mode(NetworkProvider* np, bool isScan);
+    void np_connect_profile(NetworkProvider* np, const char* address, const char* profile);
+    void np_disconnect_profile(NetworkProvider* np, const char* address, const char* profile);
+    void np_disconnect_bluetooth(NetworkProvider* np, const char* address);
+    const char* np_get_bluetooth_name(NetworkProvider* np);
+    const char* np_get_bluetooth_address(NetworkProvider* np);
+    void np_dump_bluetooth_devices(NetworkProvider* np);
+    void np_destroy(NetworkProvider* np);
+}
 #endif // NETWORK_PROVIDER

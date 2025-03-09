@@ -1104,4 +1104,3 @@ void BluetoothDevice::setStatus(const Status& state)
     std::unique_lock<std::shared_mutex> lock(mMutex);
     mState = state;
 }
-

@@ -1,7 +1,7 @@
 #include <iostream>
-#include "NetworkProvider.h"
 #include <dlfcn.h>
 #include <string.h>
+#include "NetworkProvider.h"
 
 int main(void)
 {

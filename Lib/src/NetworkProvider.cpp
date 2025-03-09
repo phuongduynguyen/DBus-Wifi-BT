@@ -599,7 +599,56 @@ void NetworkProvider::dumpBluetoothDevices()
     BluetoothAdapter::getInstance().dumpDevicesUnpaired();
 }
 
+extern "C" {
+    NetworkProvider* np_initialize() {
+        return &NetworkProvider::initialize();
+    }
 
+    NetworkProvider* np_get_instance() {
+        return &NetworkProvider::getInstance();
+    }
+
+    void np_toggle_network(NetworkProvider* np, NetworkProvider::NetworkType type) {
+        np->toggleNetWork(type);
+    }
+
+    void np_set_scan_mode(NetworkProvider* np, bool isScan) {
+        np->setScanMode(isScan);
+    }
+
+    void np_connect_profile(NetworkProvider* np, const char* address, const char* profile) {
+        np->connectProfile(address, profile);
+    }
+
+    void np_disconnect_profile(NetworkProvider* np, const char* address, const char* profile) {
+        np->disconnectProfile(address, profile);
+    }
+
+    void np_disconnect_bluetooth(NetworkProvider* np, const char* address) {
+        np->disconnectBluetoothDevice(address);
+    }
+
+    const char* np_get_bluetooth_name(NetworkProvider* np) {
+        static std::string name;
+        name = np->getBluetoothName();
+        return name.c_str();
+    }
+
+    const char* np_get_bluetooth_address(NetworkProvider* np) {
+        static std::string addr;
+        addr = np->getBluetoothAddress();
+        return addr.c_str();
+    }
+
+    void np_dump_bluetooth_devices(NetworkProvider* np) {
+        np->dumpBluetoothDevices();
+    }
+
+    void np_destroy(NetworkProvider* np) {
+        // delete g_instance;
+        // g_instance = nullptr;
+    }
+}
 
 
 
